@@ -1,0 +1,54 @@
+# Render Blueprint: web app + a cron job that polls every active deal each minute.
+# Use a Neon/Supabase database URL (free tiers there don't expire during judging),
+# and a paid web instance so judges don't hit a cold start.
+services:
+  - type: web
+    name: tranche
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run db:migrate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: DEMO_DAY_MS
+        value: "86400000"
+
+  - type: cron
+    name: tranche-poll
+    runtime: node
+    schedule: "* * * * *"
+    buildCommand: "true"
+    startCommand: >-
+      node -e "fetch(process.env.APP_URL + '/api/verify/trigger', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.CRON_SECRET }, body: JSON.stringify({ all: true }) }).then(async (r) => { console.log(r.status, (await r.text()).slice(0, 4000)); process.exit(r.ok ? 0 : 1); })"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_URL
+        sync: false
+      - key: CRON_SECRET
+        fromService:
+          type: web
+          name: tranche
+          envVarKey: CRON_SECRET
